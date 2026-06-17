@@ -23,11 +23,6 @@ type apiConfig struct {
 	port             string
 }
 
-type thumbnail struct {
-	data      []byte
-	mediaType string
-}
-
 func main() {
 	godotenv.Load(".env")
 
