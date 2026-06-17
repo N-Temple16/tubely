@@ -1,12 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -42,17 +40,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
-	if mediaType == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", nil)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Invalid file type", nil)
 		return
 	}
 
-	/*data, err := io.ReadAll(file)
+	assetPath := getAssetPath(videoID, mediaType)
+	assetDiskPath := cfg.getAssetDiskPath(assetPath)
+
+	dst, err := os.Create(assetDiskPath)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read file", err)
+		respondWithError(w, http.StatusInternalServerError, "Could not create file", err)
 		return
-	}*/
+	}
+	defer dst.Close()
+	_, err = io.Copy(dst, file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not save file", err)
+		return
+	}
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -63,29 +74,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	if video.UserID != userID {
 		respondWithError(w, http.StatusUnauthorized, "User is not the video owner", nil)
 		return
-	}
+	}		
 
-	parts := strings.Split(mediaType, "/")
-	fileExtension := parts[1]
-	filename := fmt.Sprintf("%s.%s", videoID, fileExtension)
-	filepath := filepath.Join(cfg.assetsRoot, filename)
-
-	dstFile, err := os.Create(filepath)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Could not create file", err)
-		return
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, file)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Could not copy file", err)
-		return
-	}
-
-	dataURL := fmt.Sprintf("http://localhost:%s/assets/%s.%s", cfg.port, videoID, fileExtension)
-
-	video.ThumbnailURL = &dataURL
+	url := cfg.getAssetURL(assetPath)
+	video.ThumbnailURL = &url
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
