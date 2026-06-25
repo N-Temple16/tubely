@@ -194,8 +194,7 @@ func processVideoForFastStart(filePath string) (string, error) {
 		"-c", "copy", 
 		"-movflags", "faststart",
 		"-f", "mp4",
-		outputFilePath
-	)
+		outputFilePath)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	
